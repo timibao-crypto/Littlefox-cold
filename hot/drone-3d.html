@@ -166,6 +166,25 @@
             color: #2c3e50;
             font-size: 14px;
         }
+        .debug-info {
+            margin-top: 20px;
+            padding: 15px;
+            background: #f8f8ff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #333;
+            max-height: 200px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .debug-title {
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
         .button-group {
             display: flex;
             gap: 10px;
@@ -226,6 +245,11 @@
             <div class="stat-item">当前旋转速度: <strong id="currentRPM">0</strong> RPM</div>
             <div class="stat-item">总旋转圈数: <strong id="totalRotations">0</strong> 圈</div>
         </div>
+
+        <div class="debug-info">
+            <div class="debug-title">🔍 调试信息</div>
+            <div id="debugLog"></div>
+        </div>
     </div>
 
     <!-- Three.js 库 -->
@@ -257,6 +281,23 @@
             lastTimestamp: Date.now(),
         };
 
+        // 调试日志系统
+        const debugLog = [];
+        function addDebugLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            debugLog.push(logMessage);
+            console.log(logMessage);
+            if (debugLog.length > 50) debugLog.shift();
+            updateDebugDisplay();
+        }
+
+        function updateDebugDisplay() {
+            const debugEl = document.getElementById('debugLog');
+            debugEl.textContent = debugLog.join('\n');
+            debugEl.scrollTop = debugEl.scrollHeight;
+        }
+
         // IndexedDB 配置
         const DB_NAME = 'DroneModelDB';
         const STORE_NAME = 'models';
@@ -265,15 +306,17 @@
         // 初始化数据库
         function initDB() {
             return new Promise((resolve, reject) => {
+                addDebugLog('📦 初始化 IndexedDB...');
                 const request = indexedDB.open(DB_NAME, 1);
 
                 request.onerror = () => {
-                    console.error('IndexedDB 初始化失败');
+                    addDebugLog('❌ IndexedDB 初始化失败: ' + request.error);
                     reject();
                 };
 
                 request.onsuccess = (event) => {
                     db = event.target.result;
+                    addDebugLog('✅ IndexedDB 初始化成功');
                     resolve();
                 };
 
@@ -281,6 +324,7 @@
                     const db = event.target.result;
                     if (!db.objectStoreNames.contains(STORE_NAME)) {
                         db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+                        addDebugLog('✅ 创建 ObjectStore: ' + STORE_NAME);
                     }
                 };
             });
@@ -343,21 +387,34 @@
         function loadModelFromDB() {
             return new Promise((resolve) => {
                 if (!db) {
+                    addDebugLog('⚠️ 数据库未初始化，跳过加载');
                     resolve(null);
                     return;
                 }
 
-                const transaction = db.transaction([STORE_NAME], 'readonly');
-                const store = transaction.objectStore(STORE_NAME);
-                const request = store.get('lastModel');
+                try {
+                    const transaction = db.transaction([STORE_NAME], 'readonly');
+                    const store = transaction.objectStore(STORE_NAME);
+                    const request = store.get('lastModel');
 
-                request.onsuccess = () => {
-                    resolve(request.result);
-                };
+                    request.onsuccess = () => {
+                        if (request.result) {
+                            addDebugLog(`✅ 从数据库加载模型: ${request.result.name}`);
+                            resolve(request.result);
+                        } else {
+                            addDebugLog('⚠️ 数据库中没有保存的模型');
+                            resolve(null);
+                        }
+                    };
 
-                request.onerror = () => {
+                    request.onerror = () => {
+                        addDebugLog('❌ 数据库读取失败: ' + request.error);
+                        resolve(null);
+                    };
+                } catch (error) {
+                    addDebugLog('❌ 数据库操作异常: ' + error.message);
                     resolve(null);
-                };
+                }
             });
         }
 
@@ -431,6 +488,8 @@
 
         // 从 ArrayBuffer 加载模型
         function loadGLBModelFromBuffer(arrayBuffer, displayName) {
+            addDebugLog(`📥 开始加载模型: ${displayName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
+            
             const blob = new Blob([arrayBuffer], { type: 'model/gltf-binary' });
             const url = URL.createObjectURL(blob);
 
@@ -441,7 +500,7 @@
             errorEl.style.display = 'none';
 
             let loadTimeout = setTimeout(() => {
-                console.warn('加载超时（30秒），可能的原因：网络缓慢或模型过大');
+                addDebugLog('⏱️ 加载超时（30秒）');
                 loadingEl.textContent = '加载中... (仍在处理中，请稍候...)';
             }, 30000);
 
@@ -449,6 +508,7 @@
                 url,
                 (gltf) => {
                     clearTimeout(loadTimeout);
+                    addDebugLog('✅ GLB 文件解析成功');
                     
                     // 清除旧模型
                     if (model) {
@@ -456,6 +516,7 @@
                     }
 
                     model = gltf.scene;
+                    addDebugLog('📐 调整模型大小和位置...');
 
                     // 调整模型大小和位置
                     const box = new THREE.Box3().setFromObject(model);
@@ -470,6 +531,7 @@
                     model.position.y += 0.3;
 
                     scene.add(model);
+                    addDebugLog('🎨 模型已添加到场景');
 
                     // 调整相机
                     camera.position.z = 3;
@@ -484,10 +546,14 @@
                     fileName.textContent = '📄 ' + displayName;
                     fileName.style.display = 'block';
                     modelStatus.textContent = '已加载 ✓';
-                    rotationStatus.textContent = '启用 ✓';
+                    modelStatus.style.color = '#27ae60';
+                    rotationStatus.textContent = '启用中 ✓';
+                    rotationStatus.style.color = '#27ae60';
                     state.isAutoRotating = true;
 
-                    console.log('模型加载成功:', displayName);
+                    addDebugLog('🚀 模型加载完成！');
+                    addDebugLog('🔄 自动旋转已启用，RPM: ' + state.rpm);
+
                     URL.revokeObjectURL(url);
                 },
                 (progress) => {
@@ -500,7 +566,8 @@
                     errorEl.style.display = 'block';
                     errorEl.textContent = '❌ 加载失败: ' + error.message + '<br><small>请尝试重新上传或检查文件是否损坏</small>';
                     modelStatus.textContent = '加载失败 ✗';
-                    console.error('加载错误:', error);
+                    modelStatus.style.color = '#e74c3c';
+                    addDebugLog('❌ 加载错误: ' + error.message);
                 }
             );
         }
@@ -546,6 +613,21 @@
         rotationSpeedSlider.addEventListener('input', (e) => {
             state.rpm = parseInt(e.target.value);
             speedValue.textContent = state.rpm;
+            
+            // 确保UI立即更新
+            currentRPMDisplay.textContent = state.rpm;
+            
+            if (model) {
+                if (state.rpm > 0) {
+                    state.isAutoRotating = true;
+                    rotationStatus.textContent = '启用中 ✓';
+                    rotationStatus.style.color = '#27ae60';
+                } else {
+                    state.isAutoRotating = false;
+                    rotationStatus.textContent = '已暂停';
+                    rotationStatus.style.color = '#f39c12';
+                }
+            }
         });
 
         // 清空按钮
@@ -564,10 +646,15 @@
                 state.rotationAngle += degreesPerSecond * deltaTime;
                 state.totalRotations = state.rotationAngle / 360;
 
+                // 应用旋转（Y轴）
                 model.rotation.y = THREE.MathUtils.degToRad(state.rotationAngle);
 
+                // 更新UI显示
                 currentRPMDisplay.textContent = state.rpm;
                 totalRotationsDisplay.textContent = state.totalRotations.toFixed(2);
+            } else if (model && !state.isAutoRotating) {
+                // 即使暂停也要更新显示
+                currentRPMDisplay.textContent = state.rpm;
             }
 
             renderer.render(scene, camera);
@@ -587,27 +674,28 @@
         // 启动应用
         async function startup() {
             try {
-                console.log('开始初始化...');
+                addDebugLog('🚀 应用启动中...');
                 await initDB();
-                console.log('数据库初始化成功');
+                addDebugLog('✅ 数据库初始化完成');
                 
+                addDebugLog('🎬 初始化 Three.js 场景...');
                 initScene();
-                console.log('Three.js 场景初始化成功');
+                addDebugLog('✅ Three.js 场景初始化完成');
 
                 // 尝试加载已保存的模型
-                console.log('尝试从数据库加载已保存的模型...');
+                addDebugLog('🔍 检查已保存的模型...');
                 const savedModel = await loadModelFromDB();
                 
                 if (savedModel) {
-                    console.log('找到已保存的模型:', savedModel.name);
+                    addDebugLog(`📦 找到已保存的模型: ${savedModel.name}`);
                     loadingEl.textContent = `正在加载: ${savedModel.name}...`;
                     loadGLBModelFromBuffer(savedModel.data, savedModel.name);
                 } else {
-                    console.log('未找到已保存的模型，等待用户上传');
+                    addDebugLog('⚠️ 未找到已保存的模型');
                     loadingEl.textContent = '📁 请上传 .glb 模型文件来开始';
                 }
             } catch (error) {
-                console.error('启动失败:', error);
+                addDebugLog('❌ 启动失败: ' + error.message);
                 errorEl.style.display = 'block';
                 errorEl.textContent = '❌ 初始化失败: ' + error.message;
                 loadingEl.style.display = 'none';
