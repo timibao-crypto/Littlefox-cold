@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GLB 文件加载测试</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #f5f5f5;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 10px;
+            padding: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+        .test-section {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            background: #fafafa;
+        }
+        .test-section h2 {
+            color: #667eea;
+            font-size: 18px;
+            margin-bottom: 15px;
+        }
+        .test-result {
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px 10px 0;
+            transition: background 0.3s;
+        }
+        button:hover {
+            background: #764ba2;
+        }
+        .viewer {
+            width: 100%;
+            height: 400px;
+            background: #222;
+            border-radius: 8px;
+            margin: 20px 0;
+            position: relative;
+        }
+        input[type="file"] {
+            display: none;
+        }
+        .file-label {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        .file-label:hover {
+            background: #764ba2;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 GLB 文件加载测试诊断</h1>
+
+        <div class="test-section">
+            <h2>1️⃣ 系统环保检测</h2>
+            <button onclick="testBrowser()">🖥️ 测试浏览器环境</button>
+            <div id="browserTest"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2️⃣ Three.js 测试</h2>
+            <button onclick="testThreeJS()">📦 测试 Three.js 库</button>
+            <div id="threejsTest"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3️⃣ 3D 渲染测试</h2>
+            <button onclick="testWebGL()">🎨 测试 WebGL 渲染</button>
+            <div class="viewer" id="viewer"></div>
+            <div id="webglTest"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4️⃣ GLB 文件加载测试</h2>
+            <label for="glbFile" class="file-label">📁 选择 .glb 文件上传</label>
+            <input type="file" id="glbFile" accept=".glb,.gltf" />
+            <button onclick="document.getElementById('glbFile').click()">选择文件</button>
+            <div id="glbTest"></div>
+        </div>
+    </div>
+
+    <!-- Three.js 库 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- GLTFLoader -->
+    <script src="https://cdn.jsdelivr.net/npm/three@r128/examples/js/loaders/GLTFLoader.js"></script>
+
+    <script>
+        const log = (elementId, message, type = 'info') => {
+            const el = document.getElementById(elementId);
+            if (!el) return;
+            const div = document.createElement('div');
+            div.className = `test-result ${type}`;
+            div.textContent = message;
+            el.appendChild(div);
+            el.scrollTop = el.scrollHeight;
+        };
+
+        const clear = (elementId) => {
+            const el = document.getElementById(elementId);
+            if (el) el.innerHTML = '';
+        };
+
+        // 测试浏览器环境
+        function testBrowser() {
+            clear('browserTest');
+            log('browserTest', '🖥️ 浏览器信息:');
+            log('browserTest', 'User Agent: ' + navigator.userAgent);
+            log('browserTest', '');
+            
+            log('browserTest', '✅ ArrayBuffer 支持: ' + (typeof ArrayBuffer === 'function' ? '是' : '否'), 'success');
+            log('browserTest', '✅ Blob 支持: ' + (typeof Blob === 'function' ? '是' : '否'), 'success');
+            log('browserTest', '✅ FileReader 支持: ' + (typeof FileReader === 'function' ? '是' : '否'), 'success');
+            log('browserTest', '✅ XMLHttpRequest 支持: ' + (typeof XMLHttpRequest === 'function' ? '是' : '否'), 'success');
+            
+            if (typeof indexedDB !== 'undefined') {
+                log('browserTest', '✅ IndexedDB 支持: 是', 'success');
+            } else {
+                log('browserTest', '❌ IndexedDB 支持: 否', 'error');
+            }
+        }
+
+        // 测试 Three.js
+        function testThreeJS() {
+            clear('threejsTest');
+            log('threejsTest', '📦 Three.js 诊断:');
+            
+            if (typeof THREE === 'undefined') {
+                log('threejsTest', '❌ Three.js 未加载!', 'error');
+                return;
+            }
+            
+            log('threejsTest', '✅ Three.js 已加载', 'success');
+            log('threejsTest', '版本: ' + THREE.REVISION);
+            log('threejsTest', '');
+            
+            if (typeof THREE.GLTFLoader === 'undefined') {
+                log('threejsTest', '❌ GLTFLoader 未加载!', 'error');
+                return;
+            }
+            
+            log('threejsTest', '✅ GLTFLoader 已加载', 'success');
+            
+            // 列出可用的类
+            const classes = ['Scene', 'Camera', 'Renderer', 'Mesh', 'Material', 'Geometry', 'Loader', 'TextureLoader', 'BufferGeometry'];
+            let available = [];
+            classes.forEach(cls => {
+                if (THREE[cls]) available.push(cls);
+            });
+            log('threejsTest', '✅ 可用的类: ' + available.join(', '), 'success');
+        }
+
+        // 测试 WebGL
+        let scene, camera, renderer;
+        function testWebGL() {
+            clear('webglTest');
+            const viewer = document.getElementById('viewer');
+            
+            try {
+                log('webglTest', '🎨 初始化 WebGL...');
+                
+                // 清空容器
+                viewer.innerHTML = '';
+                
+                // 创建场景
+                scene = new THREE.Scene();
+                scene.background = new THREE.Color(0x1a1a1a);
+                
+                // 创建相机
+                camera = new THREE.PerspectiveCamera(75, viewer.clientWidth / viewer.clientHeight, 0.1, 1000);
+                camera.position.z = 3;
+                
+                // 创建渲染器
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+                renderer.setSize(viewer.clientWidth, viewer.clientHeight);
+                renderer.setPixelRatio(window.devicePixelRatio);
+                viewer.appendChild(renderer.domElement);
+                
+                log('webglTest', '✅ WebGL 渲染器初始化成功', 'success');
+                
+                // 创建测试立方体
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                const material = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+                const cube = new THREE.Mesh(geometry, material);
+                scene.add(cube);
+                
+                // 添加光源
+                const light = new THREE.DirectionalLight(0xffffff, 1);
+                light.position.set(5, 5, 5);
+                scene.add(light);
+                
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+                scene.add(ambientLight);
+                
+                log('webglTest', '✅ 测试立方体已创建', 'success');
+                
+                // 开始渲染
+                function animate() {
+                    requestAnimationFrame(animate);
+                    cube.rotation.x += 0.01;
+                    cube.rotation.y += 0.01;
+                    renderer.render(scene, camera);
+                }
+                animate();
+                
+                log('webglTest', '✅ 动画循环已启动 - 你应该看到一个旋转的绿色立方体', 'success');
+                
+            } catch (error) {
+                log('webglTest', '❌ WebGL 测试失败: ' + error.message, 'error');
+                log('webglTest', '错误堆栈: ' + error.stack, 'error');
+            }
+        }
+
+        // GLB 文件加载测试
+        document.getElementById('glbFile').addEventListener('change', function(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            clear('glbTest');
+            log('glbTest', '📁 文件信息:');
+            log('glbTest', '文件名: ' + file.name, 'info');
+            log('glbFile', '大小: ' + (file.size / 1024 / 1024).toFixed(2) + ' MB', 'info');
+            log('glbTest', '类型: ' + file.type, 'info');
+            log('glbTest', '');
+            
+            // 读取文件
+            const reader = new FileReader();
+            
+            reader.onprogress = (e) => {
+                if (e.lengthComputable) {
+                    const percent = Math.round((e.loaded / e.total) * 100);
+                    log('glbTest', `📖 读取进度: ${percent}%`, 'info');
+                }
+            };
+            
+            reader.onload = (e) => {
+                const arrayBuffer = e.target.result;
+                log('glbTest', '✅ 文件读取完成', 'success');
+                log('glbTest', '缓冲区大小: ' + (arrayBuffer.byteLength / 1024 / 1024).toFixed(3) + ' MB', 'success');
+                log('glbTest', '');
+                
+                // 尝试用 GLTFLoader 加载
+                loadGLBModel(arrayBuffer);
+            };
+            
+            reader.onerror = () => {
+                log('glbTest', '❌ 文件读取失败', 'error');
+            };
+            
+            log('glbTest', '📖 开始读取文件...');
+            reader.readAsArrayBuffer(file);
+        });
+
+        // 加载 GLB 模型
+        function loadGLBModel(arrayBuffer) {
+            if (!scene) {
+                log('glbTest', '❌ 3D 场景未初始化，请先点击"测试 WebGL 渲染"', 'error');
+                return;
+            }
+
+            const blob = new Blob([arrayBuffer], { type: 'model/gltf-binary' });
+            const url = URL.createObjectURL(blob);
+            log('glbTest', '🎯 Blob URL 已创建: ' + url.substring(0, 50) + '...', 'info');
+            
+            const loader = new THREE.GLTFLoader();
+            log('glbTest', '📥 开始加载 GLB 文件...');
+            
+            let loadTimeout = setTimeout(() => {
+                log('glbTest', '⏱️ 加载超时 (30 秒)', 'error');
+            }, 30000);
+            
+            loader.load(
+                url,
+                (gltf) => {
+                    clearTimeout(loadTimeout);
+                    log('glbTest', '✅ GLB 文件加载成功!', 'success');
+                    
+                    const model = gltf.scene;
+                    log('glbTest', '模型场景节点数: ' + model.children.length, 'success');
+                    
+                    // 清空之前的模型
+                    scene.children.forEach(child => {
+                        if (child.name === 'loadedModel') {
+                            scene.remove(child);
+                        }
+                    });
+                    
+                    model.name = 'loadedModel';
+                    
+                    // 调整大小
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 2 / maxDim;
+                    model.scale.set(scale, scale, scale);
+                    log('glbTest', '📏 模型已缩放: ' + scale.toFixed(4), 'success');
+                    
+                    const center = box.getCenter(new THREE.Vector3());
+                    model.position.sub(center);
+                    log('glbTest', '📍 模型已居中', 'success');
+                    
+                    scene.add(model);
+                    log('glbTest', '🎨 模型已添加到场景', 'success');
+                    
+                    // 调整相机
+                    const distance = maxDim / 2 / Math.tan(Math.PI / 180 * 37.5);
+                    camera.position.set(0, maxDim * 0.4, distance);
+                    camera.lookAt(0, 0, 0);
+                    log('glbTest', '📹 相机已调整: 距离 ' + distance.toFixed(2), 'success');
+                    
+                    // 开始旋转
+                    if (window.modelAnimating) clearInterval(window.modelAnimating);
+                    window.modelAnimating = setInterval(() => {
+                        if (model) model.rotation.y += 0.005;
+                        renderer.render(scene, camera);
+                    }, 16);
+                    
+                    log('glbTest', '🔄 模型开始旋转!', 'success');
+                    
+                    URL.revokeObjectURL(url);
+                },
+                (progress) => {
+                    const percent = Math.round((progress.loaded / progress.total) * 100);
+                    log('glbTest', `⏳ 加载进度: ${percent}%`, 'info');
+                },
+                (error) => {
+                    clearTimeout(loadTimeout);
+                    log('glbTest', '❌ 加载失败: ' + error.message, 'error');
+                    log('glbTest', '错误详情: ' + JSON.stringify(error), 'error');
+                    URL.revokeObjectURL(url);
+                }
+            );
+        }
+
+        // 页面加载时自动运行测试
+        window.addEventListener('load', () => {
+            log('browserTest', '⏳ 等待用户操作...');
+            log('threejsTest', '⏳ 等待用户操作...');
+            log('webglTest', '⏳ 等待用户操作...');
+        });
+    </script>
+</body>
+</html>
