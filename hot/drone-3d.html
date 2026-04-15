@@ -216,7 +216,7 @@
         </div>
 
         <div class="viewer-container" id="viewer">
-            <div class="loading" id="loading">📁 请上传 .glb 模型文件来开始 或 等待自动加载...</div>
+            <div class="loading" id="loading">📁 请上传 .glb 模型文件来开始 或 等待自动加载...<br><small style="font-size: 12px; color: #999; margin-top: 10px;">(允许加载最多30秒)</small></div>
             <div class="error" id="error" style="display: none;"></div>
         </div>
 
@@ -289,22 +289,50 @@
         // 保存模型到数据库
         function saveModelToDB(file) {
             return new Promise((resolve, reject) => {
+                if (!db) {
+                    console.warn('数据库未初始化，跳过保存');
+                    resolve();
+                    return;
+                }
+
                 const reader = new FileReader();
 
                 reader.onload = function(e) {
-                    const transaction = db.transaction([STORE_NAME], 'readwrite');
-                    const store = transaction.objectStore(STORE_NAME);
+                    try {
+                        const transaction = db.transaction([STORE_NAME], 'readwrite');
+                        const store = transaction.objectStore(STORE_NAME);
 
-                    store.clear();
-                    store.add({
-                        id: 'lastModel',
-                        name: file.name,
-                        data: e.target.result,
-                        timestamp: Date.now()
-                    });
+                        store.clear();
+                        const request = store.add({
+                            id: 'lastModel',
+                            name: file.name,
+                            data: e.target.result,
+                            timestamp: Date.now()
+                        });
 
-                    transaction.oncomplete = () => resolve();
-                    transaction.onerror = () => reject();
+                        request.onerror = () => {
+                            console.error('保存到IndexedDB失败');
+                            reject(request.error);
+                        };
+
+                        transaction.oncomplete = () => {
+                            console.log('模型已保存到IndexedDB');
+                            resolve();
+                        };
+                        
+                        transaction.onerror = () => {
+                            console.error('保存事务失败');
+                            reject(transaction.error);
+                        };
+                    } catch (error) {
+                        console.error('保存异常:', error);
+                        reject(error);
+                    }
+                };
+
+                reader.onerror = () => {
+                    console.error('文件读取失败');
+                    reject(reader.error);
                 };
 
                 reader.readAsArrayBuffer(file);
@@ -335,18 +363,24 @@
 
         // 清空数据库
         function clearDatabase() {
-            if (!db) return;
+            if (!db) {
+                console.warn('数据库未初始化');
+                return;
+            }
             const transaction = db.transaction([STORE_NAME], 'readwrite');
             const store = transaction.objectStore(STORE_NAME);
             store.clear();
+            
             fileName.style.display = 'none';
             if (model) {
                 scene.remove(model);
                 model = null;
             }
-            loadingEl.textContent = '📁 请上传 .glb 模型文件来开始';
+            loadingEl.textContent = '📁 已清空已保存的模型，请上传新的 .glb 文件';
             loadingEl.style.display = 'block';
+            errorEl.style.display = 'none';
             modelStatus.textContent = '未加载';
+            console.log('已清空IndexedDB数据');
         }
 
         // 初始化 Three.js 场景
@@ -402,13 +436,20 @@
 
             const loader = new THREE.GLTFLoader();
 
-            loadingEl.textContent = '加载中...';
+            loadingEl.textContent = `加载中... (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`;
             loadingEl.style.display = 'block';
             errorEl.style.display = 'none';
+
+            let loadTimeout = setTimeout(() => {
+                console.warn('加载超时（30秒），可能的原因：网络缓慢或模型过大');
+                loadingEl.textContent = '加载中... (仍在处理中，请稍候...)';
+            }, 30000);
 
             loader.load(
                 url,
                 (gltf) => {
+                    clearTimeout(loadTimeout);
+                    
                     // 清除旧模型
                     if (model) {
                         scene.remove(model);
@@ -442,20 +483,24 @@
                     loadingEl.style.display = 'none';
                     fileName.textContent = '📄 ' + displayName;
                     fileName.style.display = 'block';
-                    modelStatus.textContent = '已加载';
-                    rotationStatus.textContent = '启用';
+                    modelStatus.textContent = '已加载 ✓';
+                    rotationStatus.textContent = '启用 ✓';
                     state.isAutoRotating = true;
 
+                    console.log('模型加载成功:', displayName);
                     URL.revokeObjectURL(url);
                 },
                 (progress) => {
-                    loadingEl.textContent = `加载中... ${Math.round((progress.loaded / progress.total) * 100)}%`;
+                    const percentComplete = Math.round((progress.loaded / progress.total) * 100);
+                    loadingEl.textContent = `加载中... ${percentComplete}% (${(progress.loaded / 1024 / 1024).toFixed(2)} MB / ${(progress.total / 1024 / 1024).toFixed(2)} MB)`;
                 },
                 (error) => {
+                    clearTimeout(loadTimeout);
                     loadingEl.style.display = 'none';
                     errorEl.style.display = 'block';
-                    errorEl.textContent = '加载失败: ' + error.message;
-                    modelStatus.textContent = '加载失败';
+                    errorEl.textContent = '❌ 加载失败: ' + error.message + '<br><small>请尝试重新上传或检查文件是否损坏</small>';
+                    modelStatus.textContent = '加载失败 ✗';
+                    console.error('加载错误:', error);
                 }
             );
         }
@@ -467,16 +512,21 @@
             reader.onload = function(e) {
                 const arrayBuffer = e.target.result;
                 
+                console.log('文件已读取:', file.name, '大小:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+                
                 // 保存到数据库
-                saveModelToDB(file).catch(err => console.error('保存失败:', err));
+                saveModelToDB(file).catch(err => console.error('保存到数据库失败:', err));
                 
                 // 加载模型
-                loadGLBModelFromBuffer(arrayBuffer, file.name);
+                setTimeout(() => {
+                    loadGLBModelFromBuffer(arrayBuffer, file.name);
+                }, 100);
             };
 
-            reader.onerror = function() {
+            reader.onerror = function(error) {
+                console.error('文件读取错误:', error);
                 errorEl.style.display = 'block';
-                errorEl.textContent = '文件读取失败';
+                errorEl.textContent = '❌ 文件读取失败: ' + error.message;
                 loadingEl.style.display = 'none';
                 modelStatus.textContent = '加载失败';
             };
@@ -537,21 +587,40 @@
         // 启动应用
         async function startup() {
             try {
+                console.log('开始初始化...');
                 await initDB();
+                console.log('数据库初始化成功');
+                
                 initScene();
+                console.log('Three.js 场景初始化成功');
 
                 // 尝试加载已保存的模型
+                console.log('尝试从数据库加载已保存的模型...');
                 const savedModel = await loadModelFromDB();
+                
                 if (savedModel) {
+                    console.log('找到已保存的模型:', savedModel.name);
+                    loadingEl.textContent = `正在加载: ${savedModel.name}...`;
                     loadGLBModelFromBuffer(savedModel.data, savedModel.name);
+                } else {
+                    console.log('未找到已保存的模型，等待用户上传');
+                    loadingEl.textContent = '📁 请上传 .glb 模型文件来开始';
                 }
             } catch (error) {
                 console.error('启动失败:', error);
+                errorEl.style.display = 'block';
+                errorEl.textContent = '❌ 初始化失败: ' + error.message;
+                loadingEl.style.display = 'none';
                 initScene();
             }
         }
 
-        startup();
+        // 页面加载完成后启动
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', startup);
+        } else {
+            startup();
+        }
     </script>
 </body>
 </html>
