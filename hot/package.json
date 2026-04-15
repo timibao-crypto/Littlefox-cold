@@ -1,0 +1,26 @@
+{
+  "name": "aircraft-wing-rotation-controller",
+  "version": "1.0.0",
+  "description": "Aircraft rear wing rotation speed control system - 飞机后翼旋转速度控制系统",
+  "main": "aircraftWingController.js",
+  "scripts": {
+    "start": "npx http-server . -p 8000",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "aircraft",
+    "wing",
+    "rotation",
+    "speed",
+    "simulation",
+    "飞机",
+    "翼旋转",
+    "速度控制"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/Littlefox-cold.git"
+  }
+}
