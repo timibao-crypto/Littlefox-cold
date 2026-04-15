@@ -220,6 +220,7 @@
                 </div>
                 <div class="button-group">
                     <button id="clearBtn" style="background: #e74c3c;">🗑️ 清空已保存模型</button>
+                    <button id="diagnoseBtn" style="background: #3498db;">🔧 诊断</button>
                 </div>
                 <div class="hint">💡 已上传的模型会自动保存，下次启动时自动加载</div>
             </div>
@@ -280,6 +281,38 @@
             isAutoRotating: true,
             lastTimestamp: Date.now(),
         };
+
+        // 诊断函数
+        function runDiagnostics() {
+            addDebugLog('═══ 开始诊断 ═══');
+            addDebugLog('🖥️ 浏览器: ' + navigator.userAgent.substring(0, 50));
+            addDebugLog('📦 WebGL 支持: ' + (window.WebGLRenderingContext ? '✓' : '✗'));
+            
+            if (!db) {
+                addDebugLog('❌ IndexedDB 未初始化');
+                return;
+            }
+            
+            try {
+                const transaction = db.transaction([STORE_NAME], 'readonly');
+                const store = transaction.objectStore(STORE_NAME);
+                const request = store.get('lastModel');
+
+                request.onsuccess = () => {
+                    if (request.result) {
+                        const model = request.result;
+                        addDebugLog(`✅ 数据库中找到模型: ${model.name}`);
+                        addDebugLog(`📊 模型大小: ${(model.data.byteLength / 1024 / 1024).toFixed(3)} MB`);
+                        addDebugLog(`🕐 保存时间: ${new Date(model.timestamp).toLocaleString()}`);
+                        addDebugLog('✅ 诊断完成，模型存在且完整');
+                    } else {
+                        addDebugLog('⚠️ 数据库为空，请重新上传模型');
+                    }
+                };
+            } catch (error) {
+                addDebugLog('❌ 诊断异常: ' + error.message);
+            }
+        }
 
         // 调试日志系统
         const debugLog = [];
@@ -490,8 +523,17 @@
         function loadGLBModelFromBuffer(arrayBuffer, displayName) {
             addDebugLog(`📥 开始加载模型: ${displayName} (${(arrayBuffer.byteLength / 1024 / 1024).toFixed(2)} MB)`);
             
+            if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                addDebugLog('❌ 缓冲区为空或无效');
+                errorEl.textContent = '❌ 文件数据无效';
+                errorEl.style.display = 'block';
+                loadingEl.style.display = 'none';
+                return;
+            }
+
             const blob = new Blob([arrayBuffer], { type: 'model/gltf-binary' });
             const url = URL.createObjectURL(blob);
+            addDebugLog(`📍 Blob URL: ${url.substring(0, 50)}...`);
 
             const loader = new THREE.GLTFLoader();
 
@@ -500,35 +542,45 @@
             errorEl.style.display = 'none';
 
             let loadTimeout = setTimeout(() => {
-                addDebugLog('⏱️ 加载超时（30秒）');
+                addDebugLog('⏱️ 加载超时（30秒）- 可能是文件太大或网络问题');
                 loadingEl.textContent = '加载中... (仍在处理中，请稍候...)';
             }, 30000);
+
+            addDebugLog('🔄 调用 GLTFLoader.load()...');
 
             loader.load(
                 url,
                 (gltf) => {
                     clearTimeout(loadTimeout);
                     addDebugLog('✅ GLB 文件解析成功');
+                    addDebugLog('🎬 场景对象获取成功');
                     
                     // 清除旧模型
                     if (model) {
                         scene.remove(model);
+                        addDebugLog('🗑️ 已清除旧模型');
                     }
 
                     model = gltf.scene;
-                    addDebugLog('📐 调整模型大小和位置...');
+                    addDebugLog(`📐 模型节点数: ${model.children.length}`);
 
                     // 调整模型大小和位置
-                    const box = new THREE.Box3().setFromObject(model);
-                    const size = box.getSize(new THREE.Vector3());
-                    const maxDim = Math.max(size.x, size.y, size.z);
-                    const scale = 1.5 / maxDim;
+                    try {
+                        const box = new THREE.Box3().setFromObject(model);
+                        const size = box.getSize(new THREE.Vector3());
+                        const maxDim = Math.max(size.x, size.y, size.z);
+                        const scale = 1.5 / maxDim;
 
-                    model.scale.multiplyScalar(scale);
+                        model.scale.multiplyScalar(scale);
 
-                    const center = box.getCenter(new THREE.Vector3());
-                    model.position.sub(center);
-                    model.position.y += 0.3;
+                        const center = box.getCenter(new THREE.Vector3());
+                        model.position.sub(center);
+                        model.position.y += 0.3;
+
+                        addDebugLog(`📏 缩放: ${scale.toFixed(4)}, 位置: (${model.position.x.toFixed(2)}, ${model.position.y.toFixed(2)}, ${model.position.z.toFixed(2)})`);
+                    } catch (e) {
+                        addDebugLog('⚠️ 模型调整异常: ' + e.message);
+                    }
 
                     scene.add(model);
                     addDebugLog('🎨 模型已添加到场景');
@@ -536,10 +588,12 @@
                     // 调整相机
                     camera.position.z = 3;
                     camera.lookAt(0, 0, 0);
+                    addDebugLog('📹 相机已调整');
 
                     // 重置旋转状态
                     state.rotationAngle = 0;
                     state.totalRotations = 0;
+                    state.lastTimestamp = Date.now();
 
                     // 更新状态显示
                     loadingEl.style.display = 'none';
@@ -551,53 +605,79 @@
                     rotationStatus.style.color = '#27ae60';
                     state.isAutoRotating = true;
 
-                    addDebugLog('🚀 模型加载完成！');
-                    addDebugLog('🔄 自动旋转已启用，RPM: ' + state.rpm);
+                    addDebugLog('✅ 模型加载完成！');
+                    addDebugLog(`🔄 自动旋转已启用，RPM: ${state.rpm}`);
+                    addDebugLog('═══ 诊断完成 ═══');
 
                     URL.revokeObjectURL(url);
                 },
                 (progress) => {
                     const percentComplete = Math.round((progress.loaded / progress.total) * 100);
                     loadingEl.textContent = `加载中... ${percentComplete}% (${(progress.loaded / 1024 / 1024).toFixed(2)} MB / ${(progress.total / 1024 / 1024).toFixed(2)} MB)`;
+                    if (percentComplete % 25 === 0) {
+                        addDebugLog(`⏳ 加载进度: ${percentComplete}%`);
+                    }
                 },
                 (error) => {
                     clearTimeout(loadTimeout);
+                    addDebugLog('❌ GLTFLoader 错误: ' + error.message);
+                    addDebugLog('📋 错误详情: ' + JSON.stringify(error));
+                    
                     loadingEl.style.display = 'none';
                     errorEl.style.display = 'block';
-                    errorEl.textContent = '❌ 加载失败: ' + error.message + '<br><small>请尝试重新上传或检查文件是否损坏</small>';
+                    errorEl.textContent = '❌ 加载失败: ' + error.message + '<br><small>请检查浏览器控制台或调试信息面板</small>';
                     modelStatus.textContent = '加载失败 ✗';
                     modelStatus.style.color = '#e74c3c';
-                    addDebugLog('❌ 加载错误: ' + error.message);
+                    
+                    try {
+                        URL.revokeObjectURL(url);
+                    } catch (e) {}
                 }
             );
         }
 
         // 加载 GLB 文件
         function loadGLBModel(file) {
+            addDebugLog(`📤 用户上传文件: ${file.name}`);
+            addDebugLog(`📏 文件大小: ${(file.size / 1024 / 1024).toFixed(3)} MB`);
+            addDebugLog(`🔍 文件类型: ${file.type}`);
+
             const reader = new FileReader();
 
             reader.onload = function(e) {
                 const arrayBuffer = e.target.result;
                 
-                console.log('文件已读取:', file.name, '大小:', (arrayBuffer.byteLength / 1024 / 1024).toFixed(2), 'MB');
+                addDebugLog(`✅ 文件读取完成: ${(arrayBuffer.byteLength / 1024 / 1024).toFixed(3)} MB`);
                 
                 // 保存到数据库
-                saveModelToDB(file).catch(err => console.error('保存到数据库失败:', err));
-                
-                // 加载模型
-                setTimeout(() => {
+                saveModelToDB(file).then(() => {
+                    addDebugLog('✅ 模型已保存到 IndexedDB');
                     loadGLBModelFromBuffer(arrayBuffer, file.name);
-                }, 100);
+                }).catch(err => {
+                    addDebugLog('❌ 保存到 IndexedDB 失败: ' + err.message);
+                    // 即使保存失败也尝试加载
+                    loadGLBModelFromBuffer(arrayBuffer, file.name);
+                });
             };
 
             reader.onerror = function(error) {
-                console.error('文件读取错误:', error);
+                addDebugLog('❌ 文件读取错误: ' + (error ? error.message : '未知错误'));
                 errorEl.style.display = 'block';
-                errorEl.textContent = '❌ 文件读取失败: ' + error.message;
+                errorEl.textContent = '❌ 文件读取失败';
                 loadingEl.style.display = 'none';
                 modelStatus.textContent = '加载失败';
             };
 
+            reader.onprogress = function(event) {
+                if (event.lengthComputable) {
+                    const percentComplete = Math.round((event.loaded / event.total) * 100);
+                    if (percentComplete % 20 === 0) {
+                        addDebugLog(`📖 文件读取: ${percentComplete}%`);
+                    }
+                }
+            };
+
+            addDebugLog('📖 开始读取文件...');
             reader.readAsArrayBuffer(file);
         }
 
@@ -632,6 +712,9 @@
 
         // 清空按钮
         clearBtn.addEventListener('click', clearDatabase);
+
+        // 诊断按钮
+        document.getElementById('diagnoseBtn').addEventListener('click', runDiagnostics);
 
         // 动画循环
         function animate() {
