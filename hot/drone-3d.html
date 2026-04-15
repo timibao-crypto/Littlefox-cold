@@ -284,9 +284,29 @@
 
         // 诊断函数
         function runDiagnostics() {
-            addDebugLog('═══ 开始诊断 ═══');
-            addDebugLog('🖥️ 浏览器: ' + navigator.userAgent.substring(0, 50));
+            addDebugLog('═══ 开始系统诊断 ═══');
+            addDebugLog('🖥️ 浏览器: ' + navigator.userAgent.substring(0, 60));
             addDebugLog('📦 WebGL 支持: ' + (window.WebGLRenderingContext ? '✓' : '✗'));
+            addDebugLog('📐 容器大小: ' + container.clientWidth + 'x' + container.clientHeight);
+            addDebugLog('🎬 Three.js 版本: ' + THREE.REVISION);
+            
+            if (renderer) {
+                try {
+                    const info = renderer.info;
+                    addDebugLog(`🎨 渲染器状态: 三角形=${info.render.triangles}, 线=${info.render.lines}, 点=${info.render.points}`);
+                } catch (e) {}
+            }
+            
+            addDebugLog(`📊 场景对象数: ${scene ? scene.children.length : 0}`);
+            
+            if (model) {
+                addDebugLog('✅ 模型已加载');
+                addDebugLog(`📍 模型位置: (${model.position.x.toFixed(2)}, ${model.position.y.toFixed(2)}, ${model.position.z.toFixed(2)})`);
+                addDebugLog(`🔄 模型旋转: (${model.rotation.x.toFixed(2)}, ${model.rotation.y.toFixed(2)}, ${model.rotation.z.toFixed(2)})`);
+                addDebugLog(`📏 模型缩放: (${model.scale.x.toFixed(4)}, ${model.scale.y.toFixed(4)}, ${model.scale.z.toFixed(4)})`);
+            } else {
+                addDebugLog('⚠️ 模型未加载');
+            }
             
             if (!db) {
                 addDebugLog('❌ IndexedDB 未初始化');
@@ -300,18 +320,19 @@
 
                 request.onsuccess = () => {
                     if (request.result) {
-                        const model = request.result;
-                        addDebugLog(`✅ 数据库中找到模型: ${model.name}`);
-                        addDebugLog(`📊 模型大小: ${(model.data.byteLength / 1024 / 1024).toFixed(3)} MB`);
-                        addDebugLog(`🕐 保存时间: ${new Date(model.timestamp).toLocaleString()}`);
-                        addDebugLog('✅ 诊断完成，模型存在且完整');
+                        const modelData = request.result;
+                        addDebugLog(`✅ 数据库中找到模型: ${modelData.name}`);
+                        addDebugLog(`📊 模型大小: ${(modelData.data.byteLength / 1024 / 1024).toFixed(3)} MB`);
+                        addDebugLog(`🕐 保存时间: ${new Date(modelData.timestamp).toLocaleString()}`);
                     } else {
-                        addDebugLog('⚠️ 数据库为空，请重新上传模型');
+                        addDebugLog('⚠️ 数据库为空');
                     }
                 };
             } catch (error) {
                 addDebugLog('❌ 诊断异常: ' + error.message);
             }
+            
+            addDebugLog('═══ 诊断完成 ═══');
         }
 
         // 调试日志系统
@@ -454,7 +475,7 @@
         // 清空数据库
         function clearDatabase() {
             if (!db) {
-                console.warn('数据库未初始化');
+                addDebugLog('⚠️ 数据库未初始化');
                 return;
             }
             const transaction = db.transaction([STORE_NAME], 'readwrite');
@@ -465,58 +486,140 @@
             if (model) {
                 scene.remove(model);
                 model = null;
+                addDebugLog('🗑️ 模型已从场景中移除');
             }
+            
+            // 重新添加测试立方体
+            addTestCube();
+            
             loadingEl.textContent = '📁 已清空已保存的模型，请上传新的 .glb 文件';
             loadingEl.style.display = 'block';
             errorEl.style.display = 'none';
             modelStatus.textContent = '未加载';
-            console.log('已清空IndexedDB数据');
+            modelStatus.style.color = '#666';
+            addDebugLog('✅ 已清空 IndexedDB 数据');
         }
 
         // 初始化 Three.js 场景
         function initScene() {
+            addDebugLog('🎬 初始化 Three.js...');
+            
+            // 清空容器
+            container.innerHTML = '';
+
             // 场景
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0xf0f0f0);
+            scene.background = new THREE.Color(0x2a2a2a);
+            addDebugLog('📦 场景已创建，背景色: #2a2a2a');
 
-            // 相机
+            // 相机 - 更大的视角范围
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            addDebugLog(`📐 容器大小: ${width}x${height}`);
+
             camera = new THREE.PerspectiveCamera(
                 75,
-                container.clientWidth / container.clientHeight,
+                width / height,
                 0.1,
-                1000
+                10000
             );
-            camera.position.set(0, 0, 2);
+            camera.position.set(0, 1.5, 3);
+            camera.lookAt(0, 0, 0);
+            addDebugLog(`📹 相机初始化: FOV=75, 位置=(0, 1.5, 3)`);
 
             // 渲染器
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-            renderer.setSize(container.clientWidth, container.clientHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
-            container.innerHTML = '';
-            container.appendChild(renderer.domElement);
+            try {
+                renderer = new THREE.WebGLRenderer({ 
+                    antialias: true, 
+                    alpha: true,
+                    precision: 'highp',
+                    powerPreference: 'high-performance'
+                });
+                renderer.setSize(width, height);
+                renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+                renderer.shadowMap.enabled = true;
+                container.appendChild(renderer.domElement);
+                addDebugLog('✅ WebGL 渲染器初始化成功');
+            } catch (error) {
+                addDebugLog('❌ WebGL 初始化失败: ' + error.message);
+                errorEl.style.display = 'block';
+                errorEl.textContent = '❌ 您的浏览器不支持 WebGL，请更新浏览器';
+                return;
+            }
 
-            // 光源
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+            // 清空默认光源
+            scene.children.forEach(child => {
+                if (child instanceof THREE.Light) scene.remove(child);
+            });
+
+            // 环境光
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
             scene.add(ambientLight);
+            addDebugLog('💡 环境光已添加 (强度: 1.2)');
 
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
-            directionalLight.position.set(5, 5, 5);
+            // 方向光 - 模拟太阳光
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            directionalLight.position.set(10, 10, 10);
+            directionalLight.target.position.set(0, 0, 0);
+            directionalLight.castShadow = true;
             scene.add(directionalLight);
+            addDebugLog('💡 方向光已添加');
 
-            const pointLight = new THREE.PointLight(0xffffff, 0.5);
-            pointLight.position.set(-5, 5, 5);
-            scene.add(pointLight);
+            // 点光源
+            const pointLight1 = new THREE.PointLight(0xffffff, 0.6);
+            pointLight1.position.set(-8, 8, 8);
+            scene.add(pointLight1);
+            
+            const pointLight2 = new THREE.PointLight(0x6699ff, 0.4);
+            pointLight2.position.set(8, 5, -8);
+            scene.add(pointLight2);
+            addDebugLog('💡 点光源已添加');
 
-            // 网格
-            const gridHelper = new THREE.GridHelper(10, 10, 0xcccccc, 0xeeeeee);
-            gridHelper.position.y = -2;
+            // 网格辅助线
+            const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x888888);
+            gridHelper.position.y = -3;
             scene.add(gridHelper);
+            addDebugLog('📏 网格已添加');
+
+            // 坐标辅助线
+            const axesHelper = new THREE.AxesHelper(5);
+            scene.add(axesHelper);
+            addDebugLog('🧭 坐标轴已添加');
 
             // 响应窗口大小
             window.addEventListener('resize', onWindowResize);
 
+            // 添加测试立方体验证 WebGL
+            addTestCube();
+
+            addDebugLog('✅ 场景初始化完成!');
+
             // 启动动画循环
             animate();
+        }
+
+        // 添加测试立方体
+        function addTestCube() {
+            const geometry = new THREE.BoxGeometry(0.5, 0.5, 0.5);
+            const material = new THREE.MeshStandardMaterial({ 
+                color: 0x00ff00,
+                metalness: 0.5,
+                roughness: 0.5
+            });
+            const cube = new THREE.Mesh(geometry, material);
+            cube.position.set(-2, 0, 0);
+            cube.name = 'testCube';
+            scene.add(cube);
+            addDebugLog('✅ 测试立方体已添加 (绿色立方体在左边)');
+        }
+
+        // 移除测试立方体
+        function removeTestCube() {
+            const testCube = scene.getObjectByName('testCube');
+            if (testCube) {
+                scene.remove(testCube);
+                addDebugLog('🗑️ 测试立方体已移除');
+            }
         }
 
         // 从 ArrayBuffer 加载模型
@@ -555,6 +658,9 @@
                     addDebugLog('✅ GLB 文件解析成功');
                     addDebugLog('🎬 场景对象获取成功');
                     
+                    // 移除测试立方体
+                    removeTestCube();
+
                     // 清除旧模型
                     if (model) {
                         scene.remove(model);
@@ -562,33 +668,53 @@
                     }
 
                     model = gltf.scene;
-                    addDebugLog(`📐 模型节点数: ${model.children.length}`);
+                    addDebugLog(`📊 模型节点数: ${model.children.length}`);
+                    addDebugLog(`📍 模型初始位置: (${model.position.x.toFixed(2)}, ${model.position.y.toFixed(2)}, ${model.position.z.toFixed(2)})`);
 
                     // 调整模型大小和位置
                     try {
                         const box = new THREE.Box3().setFromObject(model);
                         const size = box.getSize(new THREE.Vector3());
+                        addDebugLog(`📏 模型原始尺寸: ${size.x.toFixed(2)}x${size.y.toFixed(2)}x${size.z.toFixed(2)}`);
+                        
                         const maxDim = Math.max(size.x, size.y, size.z);
-                        const scale = 1.5 / maxDim;
-
-                        model.scale.multiplyScalar(scale);
+                        const scale = 2 / maxDim; // 改为2以获得更好的可视化
+                        
+                        model.scale.set(scale, scale, scale);
+                        addDebugLog(`📏 缩放系数: ${scale.toFixed(4)}`);
 
                         const center = box.getCenter(new THREE.Vector3());
                         model.position.sub(center);
-                        model.position.y += 0.3;
+                        model.position.y += 0.2;
 
-                        addDebugLog(`📏 缩放: ${scale.toFixed(4)}, 位置: (${model.position.x.toFixed(2)}, ${model.position.y.toFixed(2)}, ${model.position.z.toFixed(2)})`);
+                        addDebugLog(`📍 调整后位置: (${model.position.x.toFixed(2)}, ${model.position.y.toFixed(2)}, ${model.position.z.toFixed(2)})`);
                     } catch (e) {
                         addDebugLog('⚠️ 模型调整异常: ' + e.message);
                     }
 
-                    scene.add(model);
-                    addDebugLog('🎨 模型已添加到场景');
+                    // 为模型中的所有网格启用阴影
+                    model.traverse(function(node) {
+                        if (node.isMesh) {
+                            node.castShadow = true;
+                            node.receiveShadow = true;
+                        }
+                    });
+                    addDebugLog('🎨 模型阴影配置完成');
 
-                    // 调整相机
-                    camera.position.z = 3;
-                    camera.lookAt(0, 0, 0);
-                    addDebugLog('📹 相机已调整');
+                    scene.add(model);
+                    addDebugLog('✅ 模型已添加到场景');
+                    addDebugLog(`📊 场景中现在有 ${scene.children.length} 个对象`);
+
+                    // 调整相机观看模型
+                    const box2 = new THREE.Box3().setFromObject(model);
+                    const size2 = box2.getSize(new THREE.Vector3());
+                    const maxDim2 = Math.max(size2.x, size2.y, size2.z);
+                    const distance = maxDim2 / 2 / Math.tan(Math.PI / 180 * 45);
+                    
+                    camera.position.set(0, maxDim2 * 0.5, distance);
+                    camera.lookAt(model.position);
+                    camera.updateProjectionMatrix();
+                    addDebugLog(`📹 相机已智能调整: 距离=${distance.toFixed(2)}`);
 
                     // 重置旋转状态
                     state.rotationAngle = 0;
@@ -607,7 +733,7 @@
 
                     addDebugLog('✅ 模型加载完成！');
                     addDebugLog(`🔄 自动旋转已启用，RPM: ${state.rpm}`);
-                    addDebugLog('═══ 诊断完成 ═══');
+                    addDebugLog('═══ 加载成功 ═══');
 
                     URL.revokeObjectURL(url);
                 },
@@ -720,7 +846,7 @@
         function animate() {
             requestAnimationFrame(animate);
 
-            if (model && state.isAutoRotating) {
+            if (model && state.isAutoRotating && state.rpm > 0) {
                 const now = Date.now();
                 const deltaTime = (now - state.lastTimestamp) / 1000;
                 state.lastTimestamp = now;
@@ -729,7 +855,7 @@
                 state.rotationAngle += degreesPerSecond * deltaTime;
                 state.totalRotations = state.rotationAngle / 360;
 
-                // 应用旋转（Y轴）
+                // 应用旋转（Y轴）- 绕中心旋转
                 model.rotation.y = THREE.MathUtils.degToRad(state.rotationAngle);
 
                 // 更新UI显示
@@ -740,7 +866,12 @@
                 currentRPMDisplay.textContent = state.rpm;
             }
 
-            renderer.render(scene, camera);
+            // 确保场景被正确渲染
+            try {
+                renderer.render(scene, camera);
+            } catch (e) {
+                addDebugLog('❌ 渲染错误: ' + e.message);
+            }
         }
 
         // 窗口调整事件
@@ -748,16 +879,21 @@
             const width = container.clientWidth;
             const height = container.clientHeight;
 
+            if (!camera || !renderer) return;
+
             camera.aspect = width / height;
             camera.updateProjectionMatrix();
 
             renderer.setSize(width, height);
+            addDebugLog(`📐 窗口大小已改变: ${width}x${height}`);
         }
 
         // 启动应用
         async function startup() {
             try {
                 addDebugLog('🚀 应用启动中...');
+                addDebugLog('⏰ 时间: ' + new Date().toLocaleTimeString());
+                
                 await initDB();
                 addDebugLog('✅ 数据库初始化完成');
                 
@@ -774,15 +910,23 @@
                     loadingEl.textContent = `正在加载: ${savedModel.name}...`;
                     loadGLBModelFromBuffer(savedModel.data, savedModel.name);
                 } else {
-                    addDebugLog('⚠️ 未找到已保存的模型');
-                    loadingEl.textContent = '📁 请上传 .glb 模型文件来开始';
+                    addDebugLog('⚠️ 未找到已保存的模型 (这是正常的)');
+                    loadingEl.textContent = '📁 请上传 .glb 模型文件来开始，或查看绿色测试立方体';
+                    addDebugLog('✅ 测试立方体已显示，WebGL 正常工作');
                 }
+                
+                addDebugLog('═══ 启动完成 ═══');
             } catch (error) {
                 addDebugLog('❌ 启动失败: ' + error.message);
+                addDebugLog('📋 错误堆栈: ' + error.stack);
                 errorEl.style.display = 'block';
                 errorEl.textContent = '❌ 初始化失败: ' + error.message;
                 loadingEl.style.display = 'none';
-                initScene();
+                try {
+                    initScene();
+                } catch (e) {
+                    addDebugLog('❌ 场景初始化也失败了: ' + e.message);
+                }
             }
         }
 
