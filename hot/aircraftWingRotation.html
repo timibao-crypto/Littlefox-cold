@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>飞机后翼旋转速度控制</title>
+    <title>无人机螺旋桨旋转速度控制</title>
     <style>
         * {
             margin: 0;
@@ -93,32 +93,56 @@
             margin: 20px 0;
             perspective: 1000px;
         }
-        .wing-container {
+        .drone-body {
             display: inline-block;
             position: relative;
             width: 150px;
-            height: 50px;
+            height: 150px;
         }
-        .rear-wing {
-            position: absolute;
-            width: 30px;
-            height: 50px;
-            background: linear-gradient(90deg, #764ba2 0%, #667eea 100%);
-            border-radius: 5px;
-            right: 0;
-            transform-origin: right center;
-            transition: transform 0.05s linear;
-            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        .drone-body {
+            position: relative;
+            width: 80px;
+            height: 80px;
         }
-        .main-body {
+        .drone-frame {
             position: absolute;
-            width: 100px;
-            height: 40px;
-            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-            border-radius: 20px;
+            width: 80px;
+            height: 80px;
+            top: 0;
             left: 0;
-            top: 5px;
-            z-index: 1;
+            z-index: 10;
+        }
+        .drone-center {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 50%;
+            top: 30px;
+            left: 30px;
+            z-index: 11;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        .propeller-container {
+            position: absolute;
+            transform-origin: center;
+        }
+        .propeller-tl { top: 0; left: 0; }
+        .propeller-tr { top: 0; right: 0; }
+        .propeller-bl { bottom: 0; left: 0; }
+        .propeller-br { bottom: 0; right: 0; }
+        .propeller {
+            position: absolute;
+            width: 50px;
+            height: 8px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #667eea 100%);
+            border-radius: 4px;
+            left: 50%;
+            top: 50%;
+            margin-left: -25px;
+            margin-top: -4px;
+            transform-origin: center;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
         }
         .stats {
             margin-top: 20px;
@@ -139,31 +163,49 @@
 </head>
 <body>
     <div class="container">
-        <h1>✈️ 飞机后翼旋转速度模拟</h1>
+        <h1>🚁 无人机螺旋桨旋转速度模拟</h1>
         
         <div class="control-group">
-            <label for="speedSlider">飞行速度 (km/h)</label>
-            <input type="range" id="speedSlider" min="0" max="900" value="0" step="10">
+            <label for="speedSlider">螺旋桨转速 (RPM)</label>
+            <input type="range" id="speedSlider" min="0" max="15000" value="0" step="100">
             <div class="value-display">
                 <span id="speedValue">0</span>
-                <span>km/h</span>
+                <span>RPM</span>
             </div>
         </div>
 
         <div class="visualization">
-            <h3 style="color: #555; margin-bottom: 20px;">飞机模型预览</h3>
+            <h3 style="color: #555; margin-bottom: 20px;">无人机模型预览</h3>
             <div class="aircraft">
-                <div class="wing-container">
-                    <div class="main-body"></div>
-                    <div class="rear-wing" id="rearWing"></div>
+                <div class="drone-body">
+                    <!-- 顶部左螺旋桨 -->
+                    <div class="propeller-container propeller-tl" id="prop1">
+                        <div class="propeller"></div>
+                    </div>
+                    <!-- 顶部右螺旋桨 -->
+                    <div class="propeller-container propeller-tr" id="prop2">
+                        <div class="propeller"></div>
+                    </div>
+                    <!-- 底部左螺旋桨 -->
+                    <div class="propeller-container propeller-bl" id="prop3">
+                        <div class="propeller"></div>
+                    </div>
+                    <!-- 底部右螺旋桨 -->
+                    <div class="propeller-container propeller-br" id="prop4">
+                        <div class="propeller"></div>
+                    </div>
+                    <!-- 无人机中心 -->
+                    <div class="drone-frame">
+                        <div class="drone-center"></div>
+                    </div>
                 </div>
             </div>
             
             <div class="stats">
-                <div class="stat-item">当前速度: <strong id="statSpeed">0</strong> km/h</div>
-                <div class="stat-item">后翼旋转速度: <strong id="rotationSpeed">0</strong> RPM (转/分钟)</div>
-                <div class="stat-item">后翼旋转角度: <strong id="rotationAngle">0°</strong></div>
-                <div class="stat-item">总旋转圈数: <strong id="totalRotations">0</strong> 圈</div>
+                <div class="stat-item">当前转速: <strong id="statSpeed">0</strong> RPM</div>
+                <div class="stat-item">螺旋桨转速: <strong id="rotationSpeed">0</strong> RPM (转/分钟)</div>
+                <div class="stat-item">螺旋桨旋转角度: <strong id="rotationAngle">0°</strong></div>
+                <div class="stat-item">螺旋桨总旋转圈数: <strong id="totalRotations">0</strong> 圈</div>
             </div>
         </div>
     </div>
@@ -171,18 +213,16 @@
     <script>
         // 配置参数
         const CONFIG = {
-            // 后翼旋转与飞行速度的关系
-            // 速度越快，旋转越快
-            rpmPerKmh: 0.5, // 每 km/h 对应的转数
-            maxRPM: 450, // 最大RPM
+            // 无人机螺旋桨旋转配置
+            // 螺旋桨转速范围：0-15000 RPM
+            maxRPM: 15000,
         };
 
         // 状态变量
         let state = {
-            speed: 0,
+            rpm: 0,
             rotationAngle: 0,
             totalRotations: 0,
-            rpm: 0,
             animationId: null,
             lastTimestamp: Date.now(),
         };
@@ -190,7 +230,12 @@
         // DOM元素
         const speedSlider = document.getElementById('speedSlider');
         const speedValue = document.getElementById('speedValue');
-        const rearWing = document.getElementById('rearWing');
+        const propellers = [
+            document.getElementById('prop1'),
+            document.getElementById('prop2'),
+            document.getElementById('prop3'),
+            document.getElementById('prop4'),
+        ];
         const statSpeed = document.getElementById('statSpeed');
         const rotationSpeed = document.getElementById('rotationSpeed');
         const rotationAngle = document.getElementById('rotationAngle');
@@ -198,12 +243,9 @@
 
         // 滑块事件监听
         speedSlider.addEventListener('input', (e) => {
-            state.speed = parseFloat(e.target.value);
-            speedValue.textContent = state.speed;
-            statSpeed.textContent = state.speed;
-            
-            // 计算RPM：速度越快，转速越快
-            state.rpm = Math.min(state.speed * CONFIG.rpmPerKmh, CONFIG.maxRPM);
+            state.rpm = parseFloat(e.target.value);
+            speedValue.textContent = state.rpm;
+            statSpeed.textContent = state.rpm;
             rotationSpeed.textContent = state.rpm.toFixed(1);
         });
 
@@ -221,8 +263,10 @@
             // 计算总旋转圈数
             state.totalRotations = state.rotationAngle / 360;
 
-            // 应用旋转变换
-            rearWing.style.transform = `rotateZ(${state.rotationAngle}deg)`;
+            // 应用旋转变换到所有螺旋桨
+            propellers.forEach(propeller => {
+                propeller.style.transform = `rotate(${state.rotationAngle}deg)`;
+            });
 
             // 更新显示
             rotationAngle.textContent = Math.round(state.rotationAngle) + '°';

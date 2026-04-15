@@ -1,23 +1,20 @@
 /**
- * 飞机后翼旋转速度控制模块
+ * 无人机螺旋桨旋转速度控制模块
  * 
- * 功能：根据飞行速度计算后翼旋转圈数
- * 公式：后翼RPM = 飞行速度(km/h) × 旋转系数
+ * 功能：控制无人机螺旋桨的旋转速度
+ * 公式：螺旋桨转速(RPM) = 直接设置值
  */
 
 class AircraftWingController {
     constructor(options = {}) {
         // 配置参数
         this.config = {
-            rpmPerKmh: options.rpmPerKmh || 0.5, // 每 km/h 对应的转数
-            maxRPM: options.maxRPM || 450,        // 最大RPM
-            maxSpeed: options.maxSpeed || 900,    // 最大速度 km/h
+            maxRPM: options.maxRPM || 15000,      // 最大RPM
         };
 
         // 状态
         this.state = {
-            speed: 0,                // 当前飞行速度
-            rpm: 0,                  // 当前RPM
+            rpm: 0,                  // 当前螺旋桨转速
             rotationAngle: 0,        // 累计旋转角度
             totalRotations: 0,       // 总旋转圈数
             animationId: null,
@@ -28,17 +25,14 @@ class AircraftWingController {
     }
 
     /**
-     * 设置飞行速度
-     * @param {number} speed - 飞行速度 km/h
+     * 设置螺旋桨转速
+     * @param {number} rpm - 螺旋桨转速 RPM
      */
-    setSpeed(speed) {
-        speed = Math.max(0, Math.min(speed, this.config.maxSpeed));
-        this.state.speed = speed;
+    setSpeed(rpm) {
+        rpm = Math.max(0, Math.min(rpm, this.config.maxRPM));
+        this.state.rpm = rpm;
 
-        // 计算RPM：速度越快，转速越快
-        this.state.rpm = Math.min(speed * this.config.rpmPerKmh, this.config.maxRPM);
-
-        this.notifyListeners('speedChanged');
+        this.notifyListeners('rpmChanged');
     }
 
     /**
@@ -46,7 +40,6 @@ class AircraftWingController {
      */
     getRotationInfo() {
         return {
-            speed: this.state.speed,
             rpm: this.state.rpm,
             rotationAngle: this.state.rotationAngle,
             totalRotations: this.state.totalRotations,
@@ -169,18 +162,16 @@ if (typeof window !== 'undefined') {
     // 简单示例
     document.addEventListener('DOMContentLoaded', () => {
         const controller = new AircraftWingController({
-            rpmPerKmh: 0.5,
-            maxRPM: 450,
-            maxSpeed: 900
+            maxRPM: 15000,
         });
 
         // 监听旋转更新
         controller.addEventListener('rotationUpdated', (info) => {
-            console.log(`Speed: ${info.speed} km/h, RPM: ${info.rpm.toFixed(1)}, Rotations: ${info.totalRotations.toFixed(2)}`);
+            console.log(`RPM: ${info.rpm.toFixed(1)}, Rotations: ${info.totalRotations.toFixed(2)}`);
         });
 
-        // 设置速度和启动动画
-        controller.setSpeed(300);
+        // 设置螺旋桨转速和启动动画
+        controller.setSpeed(5000);
         controller.startAnimation();
     });
 }
