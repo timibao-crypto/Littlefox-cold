@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>飞机后翼旋转速度控制</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        .control-group {
+            margin-bottom: 25px;
+        }
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #555;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 8px;
+            border-radius: 5px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        .value-display {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            padding: 15px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .value-display span {
+            font-weight: bold;
+            color: #667eea;
+            font-size: 18px;
+        }
+        .visualization {
+            margin-top: 40px;
+            padding: 30px;
+            background: #f9f9f9;
+            border-radius: 8px;
+            text-align: center;
+        }
+        .aircraft {
+            margin: 20px 0;
+            perspective: 1000px;
+        }
+        .wing-container {
+            display: inline-block;
+            position: relative;
+            width: 150px;
+            height: 50px;
+        }
+        .rear-wing {
+            position: absolute;
+            width: 30px;
+            height: 50px;
+            background: linear-gradient(90deg, #764ba2 0%, #667eea 100%);
+            border-radius: 5px;
+            right: 0;
+            transform-origin: right center;
+            transition: transform 0.05s linear;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+        }
+        .main-body {
+            position: absolute;
+            width: 100px;
+            height: 40px;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            left: 0;
+            top: 5px;
+            z-index: 1;
+        }
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background: white;
+            border-left: 4px solid #667eea;
+            border-radius: 4px;
+            text-align: left;
+        }
+        .stat-item {
+            margin: 8px 0;
+            color: #555;
+        }
+        .stat-item strong {
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✈️ 飞机后翼旋转速度模拟</h1>
+        
+        <div class="control-group">
+            <label for="speedSlider">飞行速度 (km/h)</label>
+            <input type="range" id="speedSlider" min="0" max="900" value="0" step="10">
+            <div class="value-display">
+                <span id="speedValue">0</span>
+                <span>km/h</span>
+            </div>
+        </div>
+
+        <div class="visualization">
+            <h3 style="color: #555; margin-bottom: 20px;">飞机模型预览</h3>
+            <div class="aircraft">
+                <div class="wing-container">
+                    <div class="main-body"></div>
+                    <div class="rear-wing" id="rearWing"></div>
+                </div>
+            </div>
+            
+            <div class="stats">
+                <div class="stat-item">当前速度: <strong id="statSpeed">0</strong> km/h</div>
+                <div class="stat-item">后翼旋转速度: <strong id="rotationSpeed">0</strong> RPM (转/分钟)</div>
+                <div class="stat-item">后翼旋转角度: <strong id="rotationAngle">0°</strong></div>
+                <div class="stat-item">总旋转圈数: <strong id="totalRotations">0</strong> 圈</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 配置参数
+        const CONFIG = {
+            // 后翼旋转与飞行速度的关系
+            // 速度越快，旋转越快
+            rpmPerKmh: 0.5, // 每 km/h 对应的转数
+            maxRPM: 450, // 最大RPM
+        };
+
+        // 状态变量
+        let state = {
+            speed: 0,
+            rotationAngle: 0,
+            totalRotations: 0,
+            rpm: 0,
+            animationId: null,
+            lastTimestamp: Date.now(),
+        };
+
+        // DOM元素
+        const speedSlider = document.getElementById('speedSlider');
+        const speedValue = document.getElementById('speedValue');
+        const rearWing = document.getElementById('rearWing');
+        const statSpeed = document.getElementById('statSpeed');
+        const rotationSpeed = document.getElementById('rotationSpeed');
+        const rotationAngle = document.getElementById('rotationAngle');
+        const totalRotations = document.getElementById('totalRotations');
+
+        // 滑块事件监听
+        speedSlider.addEventListener('input', (e) => {
+            state.speed = parseFloat(e.target.value);
+            speedValue.textContent = state.speed;
+            statSpeed.textContent = state.speed;
+            
+            // 计算RPM：速度越快，转速越快
+            state.rpm = Math.min(state.speed * CONFIG.rpmPerKmh, CONFIG.maxRPM);
+            rotationSpeed.textContent = state.rpm.toFixed(1);
+        });
+
+        // 动画循环
+        function animate() {
+            const now = Date.now();
+            const deltaTime = (now - state.lastTimestamp) / 1000; // 转换为秒
+            state.lastTimestamp = now;
+
+            // 更新旋转角度
+            // RPM -> 每秒旋转圈数 -> 每秒旋转度数
+            const degreesPerSecond = (state.rpm / 60) * 360;
+            state.rotationAngle += degreesPerSecond * deltaTime;
+
+            // 计算总旋转圈数
+            state.totalRotations = state.rotationAngle / 360;
+
+            // 应用旋转变换
+            rearWing.style.transform = `rotateZ(${state.rotationAngle}deg)`;
+
+            // 更新显示
+            rotationAngle.textContent = Math.round(state.rotationAngle) + '°';
+            totalRotations.textContent = state.totalRotations.toFixed(2);
+
+            state.animationId = requestAnimationFrame(animate);
+        }
+
+        // 启动动画
+        animate();
+
+        // 清理
+        window.addEventListener('beforeunload', () => {
+            if (state.animationId) {
+                cancelAnimationFrame(state.animationId);
+            }
+        });
+    </script>
+</body>
+</html>
