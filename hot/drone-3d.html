@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>无人机3D模型旋转控制</title>
+    <title>无人机 3D 模型查看器</title>
     <style>
         * {
             margin: 0;
@@ -208,43 +208,55 @@
 </head>
 <body>
     <div class="container">
-        <h1>🚁 DJI 无人机 3D 模型旋转控制</h1>
+        <h1>🚁 无人机 3D 模型查看器</h1>
 
         <div class="controls">
             <div class="control-group">
-                <label>上传 .glb 模型文件</label>
+                <label>📁 上传 .glb 模型文件</label>
                 <div class="file-input-wrapper">
                     <input type="file" id="glbFile" accept=".glb,.gltf" />
-                    <label for="glbFile" class="file-input-label">📁 选择模型文件</label>
-                    <div class="file-name" id="fileName" style="display: none;"></div>
+                    <label for="glbFile" class="file-input-label">选择模型文件</label>
+                    <div class="file-name" id="fileName"></div>
                 </div>
                 <div class="button-group">
-                    <button id="clearBtn" style="background: #e74c3c;">🗑️ 清空已保存模型</button>
-                    <button id="diagnoseBtn" style="background: #3498db;">🔧 诊断</button>
+                    <button class="clear-btn" id="clearBtn">🗑️ 清空</button>
+                    <button class="diagnose-btn" id="diagnoseBtn">🔧 诊断</button>
                 </div>
-                <div class="hint">💡 已上传的模型会自动保存，下次启动时自动加载</div>
+                <div class="hint">💡 上传的模型会自动保存，下次打开页面时自动加载</div>
             </div>
 
             <div class="control-group">
-                <label for="rotationSpeed">自动旋转速度 (RPM)</label>
-                <input type="range" id="rotationSpeed" min="0" max="100" value="30" step="1">
+                <label for="rotationSpeed">⚙️ 自动旋转速度 (RPM)</label>
+                <input type="range" id="rotationSpeed" min="0" max="100" value="10" step="1">
                 <div class="value-display">
-                    <span id="speedValue">30</span>
+                    <span id="speedValue">10</span>
                     <span>RPM</span>
                 </div>
             </div>
         </div>
 
         <div class="viewer-container" id="viewer">
-            <div class="loading" id="loading">📁 请上传 .glb 模型文件来开始 或 等待自动加载...<br><small style="font-size: 12px; color: #999; margin-top: 10px;">(允许加载最多30秒)</small></div>
+            <div class="loading" id="loading">📁 请上传 .glb 模型文件<br><small>(或等待自动加载...</small></div>
             <div class="error" id="error" style="display: none;"></div>
         </div>
 
         <div class="stats">
-            <div class="stat-item">模型状态: <strong id="modelStatus">未加载</strong></div>
-            <div class="stat-item">自动旋转: <strong id="rotationStatus">未启用</strong></div>
-            <div class="stat-item">当前旋转速度: <strong id="currentRPM">0</strong> RPM</div>
-            <div class="stat-item">总旋转圈数: <strong id="totalRotations">0</strong> 圈</div>
+            <div class="stat-box">
+                <div class="stat-label">模型状态</div>
+                <div class="stat-value" id="modelStatus">未加载</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">旋转状态</div>
+                <div class="stat-value" id="rotationStatus">停止</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">当前 RPM</div>
+                <div class="stat-value" id="currentRPM">0</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-label">总旋转圈数</div>
+                <div class="stat-value" id="totalRotations">0</div>
+            </div>
         </div>
 
         <div class="debug-info">
@@ -593,9 +605,6 @@
             addTestCube();
 
             addDebugLog('✅ 场景初始化完成!');
-
-            // 启动动画循环
-            animate();
         }
 
         // 添加测试立方体
@@ -705,14 +714,14 @@
                     addDebugLog('✅ 模型已添加到场景');
                     addDebugLog(`📊 场景中现在有 ${scene.children.length} 个对象`);
 
-                    // 调整相机观看模型
+                    // 调整相机观看模型（使用经过验证的计算方式）
                     const box2 = new THREE.Box3().setFromObject(model);
                     const size2 = box2.getSize(new THREE.Vector3());
                     const maxDim2 = Math.max(size2.x, size2.y, size2.z);
-                    const distance = maxDim2 / 2 / Math.tan(Math.PI / 180 * 45);
+                    const distance = maxDim2 / 2 / Math.tan(Math.PI / 180 * 37.5);
                     
-                    camera.position.set(0, maxDim2 * 0.5, distance);
-                    camera.lookAt(model.position);
+                    camera.position.set(0, maxDim2 * 0.4, distance);
+                    camera.lookAt(0, 0, 0);
                     camera.updateProjectionMatrix();
                     addDebugLog(`📹 相机已智能调整: 距离=${distance.toFixed(2)}`);
 
@@ -720,6 +729,9 @@
                     state.rotationAngle = 0;
                     state.totalRotations = 0;
                     state.lastTimestamp = Date.now();
+
+                    // 重新启动动画循环 (确保模型加载后立即旋转)
+                    startAnimation();
 
                     // 更新状态显示
                     loadingEl.style.display = 'none';
@@ -842,36 +854,52 @@
         // 诊断按钮
         document.getElementById('diagnoseBtn').addEventListener('click', runDiagnostics);
 
-        // 动画循环
-        function animate() {
-            requestAnimationFrame(animate);
-
-            if (model && state.isAutoRotating && state.rpm > 0) {
-                const now = Date.now();
-                const deltaTime = (now - state.lastTimestamp) / 1000;
-                state.lastTimestamp = now;
-
-                const degreesPerSecond = (state.rpm / 60) * 360;
-                state.rotationAngle += degreesPerSecond * deltaTime;
-                state.totalRotations = state.rotationAngle / 360;
-
-                // 应用旋转（Y轴）- 绕中心旋转
-                model.rotation.y = THREE.MathUtils.degToRad(state.rotationAngle);
-
-                // 更新UI显示
-                currentRPMDisplay.textContent = state.rpm;
-                totalRotationsDisplay.textContent = state.totalRotations.toFixed(2);
-            } else if (model && !state.isAutoRotating) {
-                // 即使暂停也要更新显示
-                currentRPMDisplay.textContent = state.rpm;
+        // 动画循环 - 使用 setInterval 确保持续渲染
+        let animationInterval = null;
+        
+        function startAnimation() {
+            if (animationInterval) {
+                clearInterval(animationInterval);
             }
+            
+            animationInterval = setInterval(() => {
+                if (model && state.isAutoRotating && state.rpm > 0) {
+                    const now = Date.now();
+                    const deltaTime = (now - state.lastTimestamp) / 1000;
+                    state.lastTimestamp = now;
 
-            // 确保场景被正确渲染
-            try {
-                renderer.render(scene, camera);
-            } catch (e) {
-                addDebugLog('❌ 渲染错误: ' + e.message);
+                    const degreesPerSecond = (state.rpm / 60) * 360;
+                    state.rotationAngle += degreesPerSecond * deltaTime;
+                    state.totalRotations = state.rotationAngle / 360;
+
+                    // 应用旋转（Y轴）
+                    model.rotation.y = THREE.MathUtils.degToRad(state.rotationAngle);
+
+                    // 更新UI显示
+                    currentRPMDisplay.textContent = state.rpm;
+                    totalRotationsDisplay.textContent = state.totalRotations.toFixed(2);
+                }
+
+                // 确保场景被正确渲染
+                try {
+                    renderer.render(scene, camera);
+                } catch (e) {
+                    addDebugLog('❌ 渲染错误: ' + e.message);
+                }
+            }, 16); // 大约 60fps
+        }
+
+        function stopAnimation() {
+            if (animationInterval) {
+                clearInterval(animationInterval);
+                animationInterval = null;
             }
+        }
+
+        // 初始化时启动动画
+        function initAnimation() {
+            startAnimation();
+            addDebugLog('🎬 动画循环已启动 (setInterval 模式)');
         }
 
         // 窗口调整事件
@@ -901,6 +929,10 @@
                 initScene();
                 addDebugLog('✅ Three.js 场景初始化完成');
 
+                // 启动动画循环
+                initAnimation();
+                addDebugLog('🎬 动画循环已启动');
+
                 // 尝试加载已保存的模型
                 addDebugLog('🔍 检查已保存的模型...');
                 const savedModel = await loadModelFromDB();
@@ -924,6 +956,7 @@
                 loadingEl.style.display = 'none';
                 try {
                     initScene();
+                    initAnimation();
                 } catch (e) {
                     addDebugLog('❌ 场景初始化也失败了: ' + e.message);
                 }
